@@ -1,0 +1,226 @@
+{
+  "schema_version": "1",
+  "capabilities": [
+    "图片生成",
+    "视频生成",
+    "配置管理"
+  ],
+  "dependencies": [
+    {
+      "id": "python-runtime",
+      "type": "runtime",
+      "required": true,
+      "auth_type": "none",
+      "capabilities": [
+        "图片生成",
+        "视频生成",
+        "配置管理"
+      ],
+      "checks": [
+        {
+          "id": "python-version",
+          "type": "python",
+          "required": true,
+          "min_version": "3.8"
+        }
+      ],
+      "setup": {
+        "official_home_url": "https://www.python.org/",
+        "official_docs_url": "https://docs.python.org/3/using/index.html",
+        "download_url": "https://www.python.org/downloads/",
+        "credential_storage": "不涉及凭据",
+        "steps": [
+          "运行 python --version 确认可用",
+          "低于 3.8 时从官网下载安装，Windows 勾选加入 PATH",
+          "python 命令不存在时改用 py -3 调用"
+        ],
+        "verify": "python --version 输出 3.8 及以上",
+        "rotate_or_revoke": "不涉及凭据",
+        "security": "脚本只使用标准库，不安装任何第三方包",
+        "verified_at": "通用版本",
+        "applies_to_version": "Python 3.8 及以上"
+      },
+      "degradation": [
+        {
+          "capability": "图片生成",
+          "trigger": "机器上没有 Python 或版本低于 3.8",
+          "fallback": "停止生成，把版本要求和下载地址给用户",
+          "user_input": "无",
+          "limitations": "没有运行环境时无法产出任何图片",
+          "evidence_label": "已验证",
+          "recovery": "装上 3.8 以上版本后重新运行",
+          "stop_condition": "用户无法安装或拒绝安装 Python"
+        },
+        {
+          "capability": "视频生成",
+          "trigger": "机器上没有 Python 或版本低于 3.8",
+          "fallback": "停止生成，把版本要求和下载地址给用户",
+          "user_input": "无",
+          "limitations": "没有运行环境时无法产出任何视频",
+          "evidence_label": "已验证",
+          "recovery": "装上 3.8 以上版本后重新运行",
+          "stop_condition": "用户无法安装或拒绝安装 Python"
+        },
+        {
+          "capability": "配置管理",
+          "trigger": "机器上没有 Python 或版本低于 3.8",
+          "fallback": "无法读写配置文件，只能由用户手工编辑 JSON",
+          "user_input": "用户手工填写配置内容",
+          "limitations": "没有校验、没有打码、没有探活",
+          "evidence_label": "推断",
+          "recovery": "装上 3.8 以上版本后重跑 config show 校验",
+          "stop_condition": "用户不接受手工编辑配置"
+        }
+      ]
+    },
+    {
+      "id": "generation-api",
+      "type": "api",
+      "required": true,
+      "auth_type": "api-key",
+      "capabilities": [
+        "图片生成",
+        "视频生成"
+      ],
+      "checks": [
+        {
+          "id": "config-file",
+          "type": "file",
+          "required": true,
+          "path": "~/.media-gen/config.json"
+        },
+        {
+          "id": "api-reachable",
+          "type": "auth_probe",
+          "required": true,
+          "target": "以配置里 image_url 填写的完整地址为准"
+        }
+      ],
+      "setup": {
+        "official_home_url": "以所用服务商官网为准",
+        "official_docs_url": "以所用服务商文档为准",
+        "login_url": "以所用服务商控制台为准",
+        "credential_url": "以所用服务商密钥页面为准",
+        "console_path": [
+          "登录所用服务商控制台",
+          "进入 API Key 页面",
+          "新建密钥并复制"
+        ],
+        "scopes": [
+          "模型调用权限"
+        ],
+        "credential_storage": "配置文件 ~/.media-gen/config.json 的 api_key 字段，或环境变量 MEDIA_GEN_API_KEY",
+        "steps": [
+          "打开平台并登录",
+          "进入 API Key 页面新建密钥并复制",
+          "运行 config init 生成配置文件",
+          "把密钥填入 api_key 字段，或用 config set 代写",
+          "运行 config test 验证"
+        ],
+        "verify": "config test 返回地址和密钥都被接受",
+        "rotate_or_revoke": "在平台 API Key 页面删除旧密钥，新建后 config set 更新，再 config test 确认",
+        "security": "密钥只存用户主目录下的配置文件，不写入技能目录，不进对话记录，不随打包外传，任何输出只显示打码值",
+        "verified_at": "通用版本",
+        "applies_to_version": "任意 OpenAI 兼容图像/视频接口"
+      },
+      "degradation": [
+        {
+          "capability": "图片生成",
+          "trigger": "没有填密钥，或上游返回 401/403/402",
+          "fallback": "按缺项引导填密钥；鉴权失败时提示核对或轮换，不用其他服务顶替，不产出占位图",
+          "user_input": "可指定另一家已配好的服务",
+          "limitations": "无可用密钥时不产出任何图片",
+          "evidence_label": "已验证",
+          "recovery": "填好密钥后 config test 通过即恢复",
+          "stop_condition": "用户拒绝提供密钥且没有任何可用服务"
+        },
+        {
+          "capability": "视频生成",
+          "trigger": "等待超时，或上游返回 503 队列已满",
+          "fallback": "超时时打印任务号供稍后 fetch；队列满时按退避重试提交",
+          "user_input": "无",
+          "limitations": "任务在上游继续排队，本地无法加速；重复提交会重复计费",
+          "evidence_label": "已验证",
+          "recovery": "用 fetch 加任务号继续等，或换时段重试",
+          "stop_condition": "上游持续队列满且超过等待上限，或任务状态为 failed"
+        }
+      ]
+    },
+    {
+      "id": "config-file",
+      "type": "local-tool",
+      "required": false,
+      "auth_type": "none",
+      "capabilities": [
+        "配置管理"
+      ],
+      "checks": [
+        {
+          "id": "config-path",
+          "type": "file",
+          "required": false,
+          "path": "~/.media-gen/config.json"
+        }
+      ],
+      "setup": {
+        "official_home_url": "以所用服务商官网为准",
+        "official_docs_url": "以所用服务商文档为准",
+        "credential_storage": "配置文件本身承载密钥，写入时收紧为仅本人可读",
+        "steps": [
+          "运行 config init 生成默认配置",
+          "需要多家服务时复制 custom 段并改键名",
+          "用 config use 切换默认服务"
+        ],
+        "verify": "config show 能列出全部服务并标出可用状态",
+        "rotate_or_revoke": "删除配置文件即回到默认状态，需要重新填密钥",
+        "security": "配置文件位于用户主目录，不在技能目录内，打包分发不会被带走",
+        "verified_at": "通用版本",
+        "applies_to_version": "配置结构 version 1"
+      },
+      "degradation": [
+        {
+          "capability": "配置管理",
+          "trigger": "配置文件不存在、损坏，或同时配了多家都有密钥",
+          "fallback": "不存在时按默认值运行并提示先 init；多家可用时列出全部让用户选，不自动挑",
+          "user_input": "指定用哪一家，或确认重建配置",
+          "limitations": "不会按价格或质量自动选择服务",
+          "evidence_label": "已验证",
+          "recovery": "config init 重建或 config use 指定默认",
+          "stop_condition": "所有已配置服务都缺密钥"
+        }
+      ]
+    }
+  ],
+  "functional_degradations": [
+    {
+      "capability": "图片生成",
+      "trigger": "缺少密钥、鉴权失败、余额不足，或响应里找不到图片地址",
+      "fallback": "先按缺项引导；找不到地址时用 --dump 看原文再调整取值路径；仍失败则报告服务端原话",
+      "user_input": "可提供另一家服务或指定取值字段",
+      "limitations": "拿不到地址时不产出任何文件，不用占位图顶替",
+      "evidence_label": "已验证",
+      "recovery": "补密钥或改取值路径后重试",
+      "stop_condition": "服务端明确拒绝且用户没有替代服务"
+    },
+    {
+      "capability": "视频生成",
+      "trigger": "上游队列满、任务失败、等待超时或拿不到任务号",
+      "fallback": "队列满按退避重试；超时打印任务号供取回；任务失败报告上游原因；拿不到任务号时查原始响应",
+      "user_input": "可决定继续等还是换服务",
+      "limitations": "本地无法加速上游渲染，实测四秒的片子约需八分钟",
+      "evidence_label": "已验证",
+      "recovery": "用任务号继续取回，或换时段重试",
+      "stop_condition": "上游持续失败且用户不接受继续等"
+    },
+    {
+      "capability": "配置管理",
+      "trigger": "配置文件缺失、格式损坏，或用户要换服务",
+      "fallback": "缺失时用内置默认值继续跑并提示先初始化；损坏时提示重建；换服务用切换命令或临时参数",
+      "user_input": "确认是否重建配置、指定本次用哪家",
+      "limitations": "损坏的配置不会被静默改写，需要用户确认",
+      "evidence_label": "已验证",
+      "recovery": "重建配置后重填密钥",
+      "stop_condition": "用户拒绝提供密钥且不接受默认配置"
+    }
+  ]
+}
